@@ -1,62 +1,45 @@
-﻿using System;
+﻿using GZipTest.Helpers;
+using GZipTest.Intetfaces;
+using System;
 using System.IO;
-using System.IO.Compression;
 
 namespace GZipTest
 {
     public class Program
     {
+        private static IFileArchiver _fileArchiver = new FileArchiver();
         private static string directoryPath = @"C:\Users\iosta\Downloads\Tests\CurrentTest";
-        public static void Main()
-        {
-            DirectoryInfo directorySelected = new DirectoryInfo(directoryPath);
-            Compress(directorySelected);
 
-            foreach (FileInfo fileToDecompress in directorySelected.GetFiles("*.gz"))
-            {
-                Decompress(fileToDecompress);
-            }
-        }
-
-        public static void Compress(DirectoryInfo directorySelected)
+        public static int Main(string[] args)
         {
-            foreach (FileInfo fileToCompress in directorySelected.GetFiles())
+            try
             {
-                using (FileStream originalFileStream = fileToCompress.OpenRead())
+                args = new string[3];
+                args[0] = "compress";
+                args[1] = directoryPath + @"\10mb.txt";
+                args[2] = directoryPath + @"\10mb.txt" + _fileArchiver.DestinationFileExtension;
+                ConsoleHelper.WriteProcessMessage("Validation arguments...");
+                // ValidationHelper.Validate(args, _fileArchiver.DestinationFileExtension);
+
+                DirectoryInfo directorySelected = new DirectoryInfo(directoryPath);
+
+                foreach (FileInfo fileToCompress in directorySelected.GetFiles())
                 {
-                    if ((File.GetAttributes(fileToCompress.FullName) &
-                       FileAttributes.Hidden) != FileAttributes.Hidden & fileToCompress.Extension != ".gz")
-                    {
-                        using (FileStream compressedFileStream = File.Create(fileToCompress.FullName + ".gz"))
-                        {
-                            using (GZipStream compressionStream = new GZipStream(compressedFileStream,
-                               CompressionMode.Compress))
-                            {
-                                originalFileStream.CopyTo(compressionStream);
-                            }
-                        }
-                        FileInfo info = new FileInfo(directoryPath + Path.DirectorySeparatorChar + fileToCompress.Name + ".gz");
-                        Console.WriteLine($"Compressed {fileToCompress.Name} from {fileToCompress.Length.ToString()} to {info.Length.ToString()} bytes.");
-                    }
+                    ConsoleHelper.WriteProcessMessage("Compressing...");
+                    _fileArchiver.Compress(fileToCompress);
                 }
-            }
-        }
 
-        public static void Decompress(FileInfo fileToDecompress)
-        {
-            using (FileStream originalFileStream = fileToDecompress.OpenRead())
-            {
-                string currentFileName = fileToDecompress.FullName;
-                string newFileName = currentFileName.Remove(currentFileName.Length - fileToDecompress.Extension.Length);
-
-                using (FileStream decompressedFileStream = File.Create(newFileName))
+                foreach (FileInfo fileToDecompress in directorySelected.GetFiles("*.gz"))
                 {
-                    using (GZipStream decompressionStream = new GZipStream(originalFileStream, CompressionMode.Decompress))
-                    {
-                        decompressionStream.CopyTo(decompressedFileStream);
-                        Console.WriteLine($"Decompressed: {fileToDecompress.Name}");
-                    }
+                    ConsoleHelper.WriteProcessMessage("Decompressing...");
+                    _fileArchiver.Decompress(fileToDecompress);
                 }
+                return 0;
+            }
+            catch(Exception ex)
+            {
+                ConsoleHelper.WriteErrorMessage(ex.Message);
+                return 1;
             }
         }
     }
