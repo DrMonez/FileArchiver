@@ -1,8 +1,5 @@
 ﻿using GZipTest.Intetfaces;
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
 
 namespace GZipTest.Helpers
 {
@@ -17,12 +14,6 @@ namespace GZipTest.Helpers
         public static void WriteByteBlock(this FileStream fileStream, IByteBlock byteBlock)
         {
             fileStream.WriteToPosition(byteBlock.StartPosition, byteBlock.FinalByteBlock, byteBlock.FinalByteBlockSize);
-        }
-
-        public static void ReadFromPosition(this FileStream fileStream, long position, byte[] array, int offset, int count)
-        {
-            fileStream.Position = position;
-            fileStream.Read(array, offset, count);
         }
     }
 }

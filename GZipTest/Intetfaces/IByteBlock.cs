@@ -1,7 +1,4 @@
-﻿using System.IO;
-using System.IO.Compression;
-
-namespace GZipTest.Intetfaces
+﻿namespace GZipTest.Intetfaces
 {
     internal abstract class IByteBlock
     {
@@ -10,22 +7,9 @@ namespace GZipTest.Intetfaces
         public int FinalByteBlockSize => FinalByteBlock.Length;
         public long StartPosition { get; set; }
         public byte[] InitialByteBlock { get; set; }
-        public byte[] FinalByteBlock { get; private set; }
+        public byte[] FinalByteBlock { get; protected set; }
 
-        public void Compress()
-        {
-            using var memoryStream = new MemoryStream();
-            using var compressStream = new GZipStream(memoryStream, CompressionMode.Compress);
-            compressStream.Write(InitialByteBlock, 0, InitialByteBlockSize);
-            FinalByteBlock = memoryStream.ToArray();
-        }
-
-        public void Decompress()
-        {
-            using var memoryStream = new MemoryStream(InitialByteBlock);
-            using var compressStream = new GZipStream(memoryStream, CompressionMode.Decompress);
-            FinalByteBlock = new byte[DefaultByteBlockSize];
-            compressStream.Read(FinalByteBlock, 0, InitialByteBlockSize);
-        }
+        public abstract void Compress();
+        public abstract void Decompress();
     }
 }

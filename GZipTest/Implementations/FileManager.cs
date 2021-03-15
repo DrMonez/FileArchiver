@@ -1,9 +1,7 @@
 ﻿using GZipTest.Helpers;
 using GZipTest.Intetfaces;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
 
 namespace GZipTest.Implementations
 {
