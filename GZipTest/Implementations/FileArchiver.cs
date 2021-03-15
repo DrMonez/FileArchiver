@@ -1,141 +1,63 @@
 ﻿using GZipTest.Helpers;
 using GZipTest.Implementations;
 using GZipTest.Intetfaces;
-using System;
-using System.Linq;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Text;
-using System.Threading;
 
 namespace GZipTest
 {
     public class FileArchiver : IFileArchiver
     {
-        private int _maxThreadsCount = Environment.ProcessorCount;
-        private int _activeThreadsCount;
-        private object _activeThreadsCountLocker = new object();
-        private FileStream _inputFileStream;
-        private FileStream _outputFileStream;
-        private object _inputFileStreamLocker = new object();
-        private object _outputFileStreamLocker = new object();
-        private ConcurrentDictionary<int, AutoResetEvent> _autoHandlers = new ConcurrentDictionary<int, AutoResetEvent>();
-        private int _maxHandlersCount = 64;
+        private IByteBlocksPool _byteBlocksPool;
+        private IThreadsPool _threadsPool;
+        private IFileManager _outputManager;
 
         public override string DestinationFileExtension => ".gz";
 
-        public override void Compress(FileInfo fileToCompress)
+        public override void Compress(FileInfo fileToCompress, FileInfo compressedFile)
         {
-            using (_inputFileStream = fileToCompress.OpenRead())
-            using (_outputFileStream = File.Create(fileToCompress.FullName + ".gz"))
+            ConsoleHelper.WriteProcessMessage($"Compressing {fileToCompress.Name}...");
+            using (_byteBlocksPool = new ByteBlocksPool(fileToCompress, FileManagerMode.Read))
+            using (_outputManager = new FileManager(compressedFile, FileManagerMode.WriteArchive))
             {
-                var fileSize = fileToCompress.Length;
-                var blocksCount = (int)Math.Ceiling((float)fileSize / IByteBlock.DefaultByteBlockSize);
-                var inputFileStreamPosition = _inputFileStream.Position;
-                var inputFileStreamPositionLock = new object();
-                for (var i = 0; i < blocksCount; i++)
-                {
-                    while(_activeThreadsCount >= _maxThreadsCount)
+                _threadsPool = new ThreadsPool(() => !_byteBlocksPool.IsEmpty, () => {
+                    var block = _byteBlocksPool.GetNext();
+                    if (block == null)
                     {
-                        Thread.Sleep(100);
+                        return;
                     }
-                    var thread = new Thread((i) =>
+                    block.Compress();
+                    if (_outputManager.CanWrite)
                     {
-                        var index = (int)i;
-                        var handler = _autoHandlers[index];
-                        
-                        handler.WaitOne();
-                        CompressByteBlock(ref inputFileStreamPosition, inputFileStreamPositionLock, fileSize);
-                        handler.Set();
-                        lock(_activeThreadsCountLocker)
-                        {
-                            _activeThreadsCount--;
-                        }
-                    });
-                    var index = i % _maxHandlersCount;
-                    thread.Name = $"Thread {index}";
-                    var handler = new AutoResetEvent(true);
-                    _autoHandlers.AddOrUpdate(index, handler, (i, firstHandler) => { return handler; });
-                    thread.Start(index);
-                    lock (_activeThreadsCountLocker)
-                    {
-                        _activeThreadsCount++;
+                        _outputManager.Write(block);
                     }
-                }
-                AutoResetEvent.WaitAll(_autoHandlers.Select(x => x.Value).ToArray());
-                FileInfo info = new FileInfo(fileToCompress.FullName + ".gz");
-                ConsoleHelper.WriteInfoMessage($"Compressed {fileToCompress.Name} from {fileToCompress.Length} to {info.Length} bytes.");
+                });
+                _threadsPool.Start();
             }
+            ConsoleHelper.WriteInfoMessage($"Compressed {fileToCompress.Name} from {fileToCompress.Length} to {compressedFile.Length} bytes.");
         }
 
-        public override void Decompress(FileInfo fileToDecompress)
+        public override void Decompress(FileInfo fileToDecompress, FileInfo decompressedFile)
         {
-            string currentFileName = fileToDecompress.FullName
-                                                            .Replace(fileToDecompress.Name,
-                                                                    "decompressed_" + fileToDecompress.Name);
-            string newFileName = currentFileName.Remove(currentFileName.Length - fileToDecompress.Extension.Length);
-
-            using (_inputFileStream = fileToDecompress.OpenRead())
-            using (_outputFileStream = File.Create(newFileName))
+            ConsoleHelper.WriteProcessMessage($"Decompressing {fileToDecompress.Name}...");
+            using (_byteBlocksPool = new ByteBlocksPool(fileToDecompress, FileManagerMode.ReadArchive))
+            using (_outputManager = new FileManager(decompressedFile, FileManagerMode.Write))
             {
-                var readPosition = _inputFileStream.Position;
-                while (readPosition != _inputFileStream.Length)
+                _threadsPool = new ThreadsPool(() => !_byteBlocksPool.IsEmpty, () =>
                 {
-                    readPosition = ReadByteBlockFromArchive(out var byteBlock, readPosition);
-                    byteBlock.Decompress();
-                    _outputFileStream.WriteByteBlock(byteBlock);
-                }
-                ConsoleHelper.WriteInfoMessage($"Decompressed {fileToDecompress.Name}");
+                    var block = _byteBlocksPool.GetNext();
+                    if(block == null)
+                    {
+                        return;
+                    }
+                    block.Decompress();
+                    if (_outputManager.CanWrite)
+                    {
+                        _outputManager.Write(block);
+                    }
+                });
+                _threadsPool.Start();
             }
-        }
-
-        private void CompressByteBlock(ref long inputFileStreamPosition, object inputFileStreamPositionLock, long fileSize)
-        {
-            IByteBlock byteBlock;
-            lock (inputFileStreamPositionLock)
-            {
-                var nextPosition = inputFileStreamPosition + IByteBlock.DefaultByteBlockSize;
-                var blockSize = nextPosition > fileSize ? fileSize - inputFileStreamPosition : nextPosition - inputFileStreamPosition;
-                byteBlock = new ByteBlock(inputFileStreamPosition, blockSize);
-                inputFileStreamPosition = byteBlock.StartPosition + byteBlock.InitialByteBlockSize;
-            }
-            lock (_inputFileStreamLocker)
-            {
-                _inputFileStream.ReadFromPosition(byteBlock.StartPosition, byteBlock.InitialByteBlock, 0, byteBlock.InitialByteBlockSize);
-            }
-            byteBlock.Compress();
-            WriteByteBlockInArchive(byteBlock);
-        }
-
-        private void WriteByteBlockInArchive(IByteBlock byteBlock)
-        {
-            lock (_outputFileStreamLocker)
-            {
-                _outputFileStream.Write(BitConverter.GetBytes(byteBlock.FinalByteBlockSize), 0, sizeof(int));
-                _outputFileStream.Write(BitConverter.GetBytes(byteBlock.StartPosition), 0, sizeof(long));
-                _outputFileStream.Write(byteBlock.FinalByteBlock, 0, byteBlock.FinalByteBlockSize);
-            }
-        }
-
-        private long ReadByteBlockFromArchive(out IByteBlock byteBlock, long readPosition)
-        {
-            byte[] binaryFinalByteBlockSize = new byte[sizeof(int)];
-            byte[] binaryStartPositionByteBlock = new byte[sizeof(long)];
-            _inputFileStream.ReadFromPosition(readPosition, binaryFinalByteBlockSize, 0, binaryFinalByteBlockSize.Length);
-            readPosition = _inputFileStream.Position;
-            _inputFileStream.ReadFromPosition(readPosition, binaryStartPositionByteBlock, 0, binaryStartPositionByteBlock.Length);
-            readPosition = _inputFileStream.Position;
-
-            var finalByteBlockSize = BitConverter.ToInt32(binaryFinalByteBlockSize);
-            byteBlock = new ByteBlock(BitConverter.ToInt64(binaryStartPositionByteBlock), finalByteBlockSize);
-
-            _inputFileStream.ReadFromPosition(readPosition, byteBlock.InitialByteBlock, 0, finalByteBlockSize);
-            readPosition = _inputFileStream.Position;
-
-            return readPosition;
+            ConsoleHelper.WriteInfoMessage($"Decompressed {fileToDecompress.Name} from {fileToDecompress.Length} to {decompressedFile.Length} bytes.");
         }
     }
 }

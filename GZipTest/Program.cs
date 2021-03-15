@@ -8,32 +8,28 @@ namespace GZipTest
     public class Program
     {
         private static IFileArchiver _fileArchiver = new FileArchiver();
-        private static string directoryPath = @"C:\Users\iosta\Downloads\Tests\CurrentTest";
 
         public static int Main(string[] args)
         {
             try
             {
-                args = new string[3];
-                args[0] = "compress";
-                args[1] = directoryPath + @"\10mb.txt";
-                args[2] = directoryPath + @"\10mb.txt" + _fileArchiver.DestinationFileExtension;
                 ConsoleHelper.WriteProcessMessage("Validation arguments...");
-                // ValidationHelper.Validate(args, _fileArchiver.DestinationFileExtension);
+                ValidationHelper.Validate(args, _fileArchiver.DestinationFileExtension);
 
-                DirectoryInfo directorySelected = new DirectoryInfo(directoryPath);
+                var initialFile = new FileInfo(args[1]);
+                var destinationFile = new FileInfo(args[2]);
 
-                foreach (FileInfo fileToCompress in directorySelected.GetFiles())
+                switch(args[0])
                 {
-                    ConsoleHelper.WriteProcessMessage("Compressing...");
-                    _fileArchiver.Compress(fileToCompress);
+                    case "compress":
+                        _fileArchiver.Compress(initialFile, destinationFile);
+                        break;
+                    case "decompress":
+                        _fileArchiver.Decompress(initialFile, destinationFile);
+                        break;
                 }
 
-                foreach (FileInfo fileToDecompress in directorySelected.GetFiles("*.gz"))
-                {
-                    ConsoleHelper.WriteProcessMessage("Decompressing...");
-                    _fileArchiver.Decompress(fileToDecompress);
-                }
+                ConsoleHelper.WriteProcessMessage("Process completed.");
                 return 0;
             }
             catch(Exception ex)
