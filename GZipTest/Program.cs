@@ -8,11 +8,20 @@ namespace GZipTest
     public class Program
     {
         private static IFileArchiver _fileArchiver = new GZipFileArchiver();
+        private static string path = @"C:\Users\iosta\Downloads\GZipTest\";
 
         public static int Main(string[] args)
         {
             try
             {
+                args = new string[3];
+                args[0] = "compress";
+                args[1] = $"{path}5gb.txt";
+                args[2] = $"{path}5gb.gz";
+                //args[0] = "decompress";
+                //args[1] = $"{path}5gb.gz";
+                //args[2] = $"{path}5gb_dec.txt";
+
                 ConsoleHelper.WriteProcessMessage("Validation arguments...");
                 ValidationHelper.Validate(args, _fileArchiver.DestinationFileExtension);
 
