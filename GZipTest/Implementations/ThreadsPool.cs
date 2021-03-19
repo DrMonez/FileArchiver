@@ -1,4 +1,5 @@
-﻿using GZipTest.Intetfaces;
+﻿using GZipTest.Helpers;
+using GZipTest.Intetfaces;
 using System;
 using System.Threading;
 
@@ -37,14 +38,21 @@ namespace GZipTest.Implementations
 
         private void ThreadFunction(object i)
         {
-            var index = (int)i;
-            _autoHandlers[index].WaitOne();
-            // Бутылочное горлышко
-            while (_FunkToCheckCycleEnd())
+            try
             {
-                _FuncToParallel();
+                var index = (int)i;
+                _autoHandlers[index].WaitOne();
+                // Бутылочное горлышко
+                while (_FunkToCheckCycleEnd())
+                {
+                    _FuncToParallel();
+                }
+                _autoHandlers[index].Set();
             }
-            _autoHandlers[index].Set();
+            catch(Exception ex)
+            {
+                ConsoleHelper.WriteErrorMessage(ex.Message);
+            }
         }
 
         private void InitAutoHandlers(int size)
