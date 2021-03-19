@@ -7,8 +7,7 @@ namespace GZipTest.Implementations
     internal class ThreadsPool : IThreadsPool
     {
         private static readonly int _maxThreadsCount = Environment.ProcessorCount;
-        private static Semaphore _activeThreadsSemaphore = new Semaphore(_maxThreadsCount, _maxThreadsCount);
-        private static readonly int _maxHandlersCount = 64;
+        private Thread[] _threads = new Thread[_maxThreadsCount];
         private AutoResetEvent[] _autoHandlers;
 
         private FuncToParallel _FuncToParallel;
@@ -21,27 +20,31 @@ namespace GZipTest.Implementations
         public ThreadsPool(FunkToCheckCycleEnd funkToCheckCycleEnd, FuncToParallel funcToParallel)
         {
             _FuncToParallel = funcToParallel;
-            InitAutoHandlers(_maxHandlersCount);
+            InitAutoHandlers(_maxThreadsCount);
             _FunkToCheckCycleEnd = funkToCheckCycleEnd;
         }
 
         public void Start()
         {
-            for (int i = 0, index = 0; _FunkToCheckCycleEnd(); i++, index = i % _autoHandlers.Length)
+            for(var i = 0; i < _threads.Length; i++)
             {
-                _autoHandlers[index].WaitOne();
-                _activeThreadsSemaphore.WaitOne();
-                var thread = new Thread((i) =>
-                {
-                    var index = (int)i;
-                    _FuncToParallel();
-                    _autoHandlers[index].Set();
-                    _activeThreadsSemaphore.Release();
-                });
-                thread.Name = $"Thread {i}";
-                thread.Start(index);
+                _threads[i] = new Thread(ThreadFunction);
+                _threads[i].Name = $"Thread {i}";
+                _threads[i].Start(i);
             }
             WaitHandle.WaitAll(_autoHandlers);
+        }
+
+        private void ThreadFunction(object i)
+        {
+            var index = (int)i;
+            _autoHandlers[index].WaitOne();
+            // Бутылочное горлышко
+            while (_FunkToCheckCycleEnd())
+            {
+                _FuncToParallel();
+            }
+            _autoHandlers[index].Set();
         }
 
         private void InitAutoHandlers(int size)
