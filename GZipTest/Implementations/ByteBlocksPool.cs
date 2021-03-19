@@ -15,10 +15,7 @@ namespace GZipTest.Implementations
         private object _byteBlocksLocker = new object();
         private bool _disposed = false;
         private Thread _poolThread;
-        private object _poolThreadLocker = new object();
-
-        private delegate void _OnFreePlaceInPoolHandler();
-        private event _OnFreePlaceInPoolHandler _OnFreePlaceInPool;
+        private AutoResetEvent _poolThreadLocker = new AutoResetEvent(true);
 
         private bool _IsEmpty => _byteBlocks.Count == 0 && (_poolThread == null || !_poolThread.IsAlive) && !_readerManager.CanRead;
 
@@ -26,51 +23,47 @@ namespace GZipTest.Implementations
         {
             get
             {
-                lock(_poolThreadLocker)
-                lock(_byteBlocksLocker)
+                bool isEmty;
+                lock (_byteBlocksLocker)
                 {
-                    return _IsEmpty;
+                    isEmty = _IsEmpty;
                 }
+                return isEmty;
             }
         }
 
         public ByteBlocksPool(FileInfo fileToRead, FileManagerMode mode)
         {
-            _readerManager = new FileManager(fileToRead, mode); 
-            FillIn();
+            _readerManager = new FileManager(fileToRead, mode);
+            
+            // КОСТЫЛЬ
+            while(_byteBlocks.Count < _capacity && _readerManager.CanRead)
+            {
+                _byteBlocks.Enqueue(_readerManager.Read());
+            }    
 
-            _OnFreePlaceInPool += ByteBlocksPool__OnPlaceInPool;
+            _poolThread = new Thread(FillIn);
+            _poolThread.Name = "Read Thread";
+            _poolThread.Start();
         }
 
         public IByteBlock GetNext()
         {
             IByteBlock byteBlock;
             double queueFullness;
-            bool isThreadWorking = false;
-            
-            lock(_poolThreadLocker)
-            {
-                isThreadWorking = _poolThread != null && _poolThread.IsAlive;
-            }
             lock (_byteBlocksLocker)
             {
-                if (_IsEmpty)
+                if (_byteBlocks.Count == 0)
                 {
                     return null;
                 }
-                try
-                {
-                    byteBlock = _byteBlocks.Dequeue();
-                }
-                catch(InvalidOperationException ex)
-                {
-                    return null;
-                }
+
+                byteBlock = _byteBlocks.Dequeue();
                 queueFullness = (double)_byteBlocks.Count / _capacity;
             }
-            if (!isThreadWorking)
+            if (_poolThread.IsAlive)
             {
-                _OnFreePlaceInPool?.Invoke();
+                _poolThreadLocker.Set();
             }
 
             return byteBlock;
@@ -96,37 +89,23 @@ namespace GZipTest.Implementations
 
         private void FillIn()
         {
-            if (!_readerManager.CanRead)
-            {
-                _OnFreePlaceInPool -= ByteBlocksPool__OnPlaceInPool;
-                return;
-            }
-
             int byteBlocksCount;
             lock (_byteBlocksLocker)
             {
                 byteBlocksCount = _byteBlocks.Count;
             }
-            while (byteBlocksCount < _capacity && _readerManager.CanRead)
+            while (_readerManager.CanRead)
             {
+                _poolThreadLocker.WaitOne();
                 var byteBlock = _readerManager.Read();
                 lock (_byteBlocksLocker)
                 {
                     _byteBlocks.Enqueue(byteBlock);
                     byteBlocksCount = _byteBlocks.Count;
                 }
-            }
-        }
-
-        private void ByteBlocksPool__OnPlaceInPool()
-        {
-            lock (_poolThreadLocker)
-            {
-                if (_poolThread == null || !_poolThread.IsAlive)
+                if(byteBlocksCount < _capacity)
                 {
-                    _poolThread = new Thread(FillIn);
-                    _poolThread.Name = "Pool thread";
-                    _poolThread.Start();
+                    _poolThreadLocker.Set();
                 }
             }
         }
