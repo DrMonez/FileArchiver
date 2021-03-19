@@ -2,7 +2,7 @@
 
 namespace GZipTest.Intetfaces
 {
-    public abstract class IFileArchiver
+    public interface IFileArchiver
     {
         public abstract string DestinationFileExtension { get; }
         public abstract void Compress(FileInfo fileToCompress, FileInfo compressedFile);

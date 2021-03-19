@@ -7,7 +7,7 @@ namespace GZipTest
 {
     public class Program
     {
-        private static IFileArchiver _fileArchiver = new FileArchiver();
+        private static IFileArchiver _fileArchiver = new GZipFileArchiver();
 
         public static int Main(string[] args)
         {

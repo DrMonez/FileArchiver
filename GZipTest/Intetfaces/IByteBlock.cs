@@ -1,15 +1,11 @@
 ﻿namespace GZipTest.Intetfaces
 {
-    internal abstract class IByteBlock
+    internal interface IByteBlock
     {
-        public static int DefaultByteBlockSize => 1000000;
-        public int InitialByteBlockSize => InitialByteBlock.Length;
-        public int FinalByteBlockSize => FinalByteBlock.Length;
-        public long StartPosition { get; set; }
-        public byte[] InitialByteBlock { get; set; }
-        public byte[] FinalByteBlock { get; protected set; }
-
-        public abstract void Compress();
-        public abstract void Decompress();
+        int InitialByteBlockSize { get; }
+        int FinalByteBlockSize { get; }
+        long StartPosition { get; set; }
+        byte[] InitialByteBlock { get; set; }
+        byte[] FinalByteBlock { get; set; }
     }
 }

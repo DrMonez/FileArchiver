@@ -71,7 +71,7 @@ namespace GZipTest.Implementations
             {
                 throw new InvalidOperationException("The file couldn't be read.");
             }
-            var nextPosition = _fileStream.Position + IByteBlock.DefaultByteBlockSize;
+            var nextPosition = _fileStream.Position + DataConfiguration.DefaultByteBlockSize;
             var blockSize = nextPosition > _fileInfo.Length ? _fileInfo.Length - _fileStream.Position : nextPosition - _fileStream.Position;
 
             var byteBlock = new ByteBlock(_fileStream.Position, blockSize);
