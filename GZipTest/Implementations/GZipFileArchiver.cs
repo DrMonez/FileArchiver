@@ -3,36 +3,52 @@ using GZipTest.Implementations;
 using GZipTest.Intetfaces;
 using System.IO;
 using System.IO.Compression;
+using System.Threading;
 
 namespace GZipTest
 {
     public class GZipFileArchiver : IFileArchiver
     {
-        private IByteBlocksPool _byteBlocksPool;
+        private IByteBlocksPool _byteBlocksPool = new ByteBlocksPool();
         private IThreadsPool _threadsPool;
+        private IFileManager _inputManager;
         private IFileManager _outputManager;
+
+        private Thread _readingThread;
+        private AutoResetEvent _readingThreadLocker = new AutoResetEvent(true);
 
         public string DestinationFileExtension => ".gz";
 
         public void Compress(FileInfo fileToCompress, FileInfo compressedFile)
         {
             ConsoleHelper.WriteProcessMessage($"Compressing {fileToCompress.Name}...");
-            using (_byteBlocksPool = new ByteBlocksPool(fileToCompress, FileManagerMode.Read))
-            using (_outputManager = new FileManager(compressedFile, FileManagerMode.WriteArchive))
+            using (_inputManager = new FileManager(fileToCompress, FileManagerMode.Read))
             {
-                _threadsPool = new ThreadsPool(() => !_byteBlocksPool.IsEmpty, () => {
-                    var block = _byteBlocksPool.GetNext();
-                    if (block == null)
-                    {
-                        return;
-                    }
-                    CompressByteBlock(block);
-                    if (_outputManager.CanWrite)
-                    {
-                        _outputManager.Write(block);
-                    }
-                });
-                _threadsPool.Start();
+                _readingThread = new Thread(Read);
+                _readingThread.Name = "Read Thread";
+                _readingThread.Start();
+
+                using (_outputManager = new FileManager(compressedFile, FileManagerMode.WriteArchive))
+                {
+                    _byteBlocksPool.OnFreedSpace += RunReading;
+                    _threadsPool = new ThreadsPool(
+                        () => !_byteBlocksPool.IsEmpty || _readingThread.IsAlive,
+                        () =>
+                        {
+                            var block = _byteBlocksPool.GetNext();
+                            if (block == null)
+                            {
+                                return;
+                            }
+                            CompressByteBlock(block);
+                            if (_outputManager.CanWrite)
+                            {
+                                _outputManager.Write(block);
+                            }
+                        }
+                    );
+                    _threadsPool.Start();
+                }
             }
             ConsoleHelper.WriteInfoMessage($"Compressed {fileToCompress.Name} from {fileToCompress.Length} to {compressedFile.Length} bytes.");
         }
@@ -40,23 +56,33 @@ namespace GZipTest
         public void Decompress(FileInfo fileToDecompress, FileInfo decompressedFile)
         {
             ConsoleHelper.WriteProcessMessage($"Decompressing {fileToDecompress.Name}...");
-            using (_byteBlocksPool = new ByteBlocksPool(fileToDecompress, FileManagerMode.ReadArchive))
-            using (_outputManager = new FileManager(decompressedFile, FileManagerMode.Write))
+            using (_inputManager = new FileManager(fileToDecompress, FileManagerMode.ReadArchive))
             {
-                _threadsPool = new ThreadsPool(() => !_byteBlocksPool.IsEmpty, () =>
+                _readingThread = new Thread(Read);
+                _readingThread.Name = "Read Thread";
+                _readingThread.Start();
+
+                using (_outputManager = new FileManager(decompressedFile, FileManagerMode.Write))
                 {
-                    var block = _byteBlocksPool.GetNext();
-                    if(block == null)
-                    {
-                        return;
-                    }
-                    DecompressByteBlock(block);
-                    if (_outputManager.CanWrite)
-                    {
-                        _outputManager.Write(block);
-                    }
-                });
-                _threadsPool.Start();
+                    _byteBlocksPool.OnFreedSpace += RunReading;
+                    _threadsPool = new ThreadsPool(
+                        () => !_byteBlocksPool.IsEmpty || _readingThread.IsAlive,
+                        () =>
+                        {
+                            var block = _byteBlocksPool.GetNext();
+                            if (block == null)
+                            {
+                                return;
+                            }
+                            DecompressByteBlock(block);
+                            if (_outputManager.CanWrite)
+                            {
+                                _outputManager.Write(block);
+                            }
+                        }
+                    );
+                    _threadsPool.Start();
+                }
             }
             ConsoleHelper.WriteInfoMessage($"Decompressed {fileToDecompress.Name} from {fileToDecompress.Length} to {decompressedFile.Length} bytes.");
         }
@@ -77,6 +103,25 @@ namespace GZipTest
             byteBlock.FinalByteBlock = new byte[DataConfiguration.DefaultByteBlockSize];
             compressStream.Read(byteBlock.FinalByteBlock, 0, byteBlock.InitialByteBlockSize);
             return byteBlock;
+        }
+
+        private void Read()
+        {
+            while(_inputManager.CanRead)
+            {
+                _readingThreadLocker.WaitOne();
+                var byteBlock = _inputManager.Read();
+                _byteBlocksPool.Add(byteBlock);
+                if (_byteBlocksPool.Count < _byteBlocksPool.MaxSize)
+                {
+                    _readingThreadLocker.Set();
+                }
+            }
+        }
+
+        private void RunReading()
+        {
+            _readingThreadLocker.Set();
         }
     }
 }
