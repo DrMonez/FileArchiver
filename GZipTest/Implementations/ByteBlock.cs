@@ -4,25 +4,21 @@ namespace GZipTest.Implementations
 {
     internal class ByteBlock : IByteBlock
     {
-        public int InitialByteBlockSize => InitialByteBlock.Length;
-
-        public int FinalByteBlockSize => FinalByteBlock.Length;
-
-        public long StartPosition { get; set; }
-        public byte[] InitialByteBlock { get; set; }
-        public byte[] FinalByteBlock { get; set; }
+        public int Index { get; set; }
+        public int BufferSize => Buffer.Length;
+        public byte[] Buffer { get; set; }
 
 
-        public ByteBlock(long startPosition)
+        public ByteBlock(int number)
         {
-            StartPosition = startPosition;
-            InitialByteBlock = new byte[DataConfiguration.DefaultByteBlockSize];
+            Index = number;
+            Buffer = new byte[DataConfiguration.DefaultByteBlockSize];
         }
 
-        public ByteBlock(long startPosition, long initialByteBlockSize)
+        public ByteBlock(int number, long initialByteBlockSize)
         {
-            StartPosition = startPosition;
-            InitialByteBlock = new byte[initialByteBlockSize];
+            Index = number;
+            Buffer = new byte[initialByteBlockSize];
         }
     }
 }

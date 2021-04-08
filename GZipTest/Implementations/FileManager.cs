@@ -11,6 +11,7 @@ namespace GZipTest.Implementations
         private object _fileStreamLocker = new object();
         private FileInfo _fileInfo;
         private bool _disposed = false;
+        private int _blockIndex = 0;
 
         public bool CanRead => _fileStream.CanRead && _fileStream.Position < _fileStream.Length;
 
@@ -74,20 +75,24 @@ namespace GZipTest.Implementations
             var nextPosition = _fileStream.Position + DataConfiguration.DefaultByteBlockSize;
             var blockSize = nextPosition > _fileInfo.Length ? _fileInfo.Length - _fileStream.Position : nextPosition - _fileStream.Position;
 
-            var byteBlock = new ByteBlock(_fileStream.Position, blockSize);
-            _fileStream.Read(byteBlock.InitialByteBlock, 0, byteBlock.InitialByteBlockSize);
+            var byteBlock = new ByteBlock(_blockIndex++, blockSize);
+            _fileStream.Read(byteBlock.Buffer, 0, byteBlock.BufferSize);
             return byteBlock;
         }
 
         private IByteBlock ReadByteBlockFromArchive()
         {
+            if (!CanRead)
+            {
+                throw new InvalidOperationException("The file couldn't be read.");
+            }
             byte[] binaryFinalByteBlockSize = new byte[sizeof(int)];
-            byte[] binaryStartPositionByteBlock = new byte[sizeof(long)];
+            byte[] binaryIndexByteBlock = new byte[sizeof(int)];
             _fileStream.Read(binaryFinalByteBlockSize, 0, binaryFinalByteBlockSize.Length);
-            _fileStream.Read(binaryStartPositionByteBlock, 0, binaryStartPositionByteBlock.Length);
+            _fileStream.Read(binaryIndexByteBlock, 0, binaryIndexByteBlock.Length);
 
-            var byteBlock = new ByteBlock(BitConverter.ToInt64(binaryStartPositionByteBlock), BitConverter.ToInt32(binaryFinalByteBlockSize));
-            _fileStream.Read(byteBlock.InitialByteBlock, 0, byteBlock.InitialByteBlockSize);
+            var byteBlock = new ByteBlock(BitConverter.ToInt32(binaryIndexByteBlock), BitConverter.ToInt32(binaryFinalByteBlockSize));
+            _fileStream.Read(byteBlock.Buffer, 0, byteBlock.BufferSize);
 
             return byteBlock;
         }
@@ -98,9 +103,9 @@ namespace GZipTest.Implementations
             {
                 throw new InvalidOperationException("The file couldn't be written.");
             }
-            _fileStream.Write(BitConverter.GetBytes(byteBlock.FinalByteBlockSize), 0, sizeof(int));
-            _fileStream.Write(BitConverter.GetBytes(byteBlock.StartPosition), 0, sizeof(long));
-            _fileStream.Write(byteBlock.FinalByteBlock, 0, byteBlock.FinalByteBlockSize);
+            _fileStream.Write(BitConverter.GetBytes(byteBlock.BufferSize), 0, sizeof(int));
+            _fileStream.Write(BitConverter.GetBytes(byteBlock.Index), 0, sizeof(int));
+            _fileStream.Write(byteBlock.Buffer, 0, byteBlock.BufferSize);
         }
 
         private void WriteByteBlock(IByteBlock byteBlock)
@@ -109,7 +114,7 @@ namespace GZipTest.Implementations
             {
                 throw new InvalidOperationException("The file couldn't be written.");
             }
-            _fileStream.WriteByteBlock(byteBlock);
+            _fileStream.Write(byteBlock.Buffer, 0, byteBlock.BufferSize);
         }
 
         ~FileManager() => Dispose(false);

@@ -2,10 +2,8 @@
 {
     internal interface IByteBlock
     {
-        int InitialByteBlockSize { get; }
-        int FinalByteBlockSize { get; }
-        long StartPosition { get; set; }
-        byte[] InitialByteBlock { get; set; }
-        byte[] FinalByteBlock { get; set; }
+        int Index { get; set; }
+        int BufferSize { get; }
+        byte[] Buffer { get; set; }
     }
 }

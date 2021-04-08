@@ -20,8 +20,8 @@ namespace GZipTest.Implementations
 
         public ThreadsPool(FunkToCheckCycleEnd funkToCheckCycleEnd, FuncToParallel funcToParallel)
         {
-            _FuncToParallel = funcToParallel;
             InitAutoHandlers(_maxThreadsCount);
+            _FuncToParallel = funcToParallel;
             _FunkToCheckCycleEnd = funkToCheckCycleEnd;
         }
 
@@ -42,7 +42,6 @@ namespace GZipTest.Implementations
             {
                 var index = (int)i;
                 _autoHandlers[index].WaitOne();
-                // Бутылочное горлышко
                 while (_FunkToCheckCycleEnd())
                 {
                     _FuncToParallel();

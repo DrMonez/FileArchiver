@@ -8,57 +8,40 @@ namespace GZipTest.Implementations
     {
         private static readonly int _capacity = Environment.ProcessorCount * 30;
 
-        private Queue<IByteBlock> _byteBlocks = new Queue<IByteBlock>(_capacity);
+        private Dictionary<long, IByteBlock> _byteBlocks = new Dictionary<long, IByteBlock>(_capacity);
         private object _byteBlocksLocker = new object();
+        private int _nextIndex = 0;
 
-        private bool _IsEmpty => _byteBlocks.Count == 0;
-
-        public bool IsEmpty
-        {
-            get
-            {
-                return _IsEmpty;
-            }
-        }
-
-        public int MaxSize => _capacity;
-
+        public bool IsEmpty => _byteBlocks.Count == 0;
+        public bool IsFull => !(Count < MaxSize);
+        public int MaxSize => _capacity - Environment.ProcessorCount;
         public int Count
         {
             get
             {
-                return _byteBlocks.Count;
-            }
-        }
-
-        public ByteBlocksPool(IEnumerable<IByteBlock> byteBlocks = null)
-        { 
-            if(byteBlocks == null)
-            {
-                return;
-            }
-
-            foreach(var byteBlock in byteBlocks)
-            {
-                _byteBlocks.Enqueue(byteBlock);
+                int count;
+                lock (_byteBlocksLocker)
+                {
+                    count =_byteBlocks.Count;
+                }
+                return count;
             }
         }
 
         public event Action OnFreedSpace;
+        public event Action OnNoLongerEmpty;
 
         public IByteBlock GetNext()
         {
             IByteBlock byteBlock;
-            double queueFullness;
+
             lock (_byteBlocksLocker)
             {
-                if (_byteBlocks.Count == 0)
+                if (_byteBlocks.Count == 0 || !_byteBlocks.TryGetValue(_nextIndex, out byteBlock))
                 {
                     return null;
                 }
-
-                byteBlock = _byteBlocks.Dequeue();
-                queueFullness = (double)_byteBlocks.Count / _capacity;
+                _byteBlocks.Remove(_nextIndex++);
             }
             OnFreedSpace?.Invoke();
 
@@ -67,14 +50,15 @@ namespace GZipTest.Implementations
 
         public void Add(IByteBlock byteBlock)
         {
-            if(Count >= MaxSize)
+            if(Count >= _capacity)
             {
-                throw new OverflowException("The pool is overflow");
+                throw new OverflowException("The pool is overflow.");
             }
             lock(_byteBlocksLocker)
             {
-                _byteBlocks.Enqueue(byteBlock);
+                _byteBlocks.Add(byteBlock.Index, byteBlock);
             }
+            OnNoLongerEmpty?.Invoke();
         }
     }
 }
