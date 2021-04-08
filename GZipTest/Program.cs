@@ -16,11 +16,15 @@ namespace GZipTest
             {
                 args = new string[3];
                 args[0] = "compress";
-                args[1] = $"{path}5gb.txt";
-                args[2] = $"{path}5gb.gz";
-                //args[0] = "decompress";
+                //args[1] = $"{path}5gb.txt";
+                //args[2] = $"{path}5gb.gz";
+                args[1] = $"{path}pict14mb.jpg";
+                args[2] = $"{path}pict14mb.gz";
+                args[0] = "decompress";
                 //args[1] = $"{path}5gb.gz";
                 //args[2] = $"{path}5gb_dec.txt";
+                args[1] = $"{path}pict14mb.gz";
+                args[2] = $"{path}pict14mb_dec.jpg";
 
                 ConsoleHelper.WriteProcessMessage("Validation arguments...");
                 ValidationHelper.Validate(args, _fileArchiver.DestinationFileExtension);
