@@ -11,6 +11,6 @@ namespace GZipTest.Intetfaces
         int MaxSize { get; }
         int Count { get; }
         IByteBlock GetNext();
-        void Add(IByteBlock byteBlock);
+        void Add(int index, IByteBlock byteBlock);
     }
 }

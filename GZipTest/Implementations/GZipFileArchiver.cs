@@ -45,7 +45,7 @@ namespace GZipTest
                             }
                             var compressedBlock = CompressByteBlock(block);
                             _finalByteBlocksPoolAddLocker.WaitOne();
-                            _finalByteBlocksPool.Add(compressedBlock);
+                            _finalByteBlocksPool.Add(compressedBlock.Index, compressedBlock);
                             if (!_finalByteBlocksPool.IsFull)
                             {
                                 _finalByteBlocksPoolAddLocker.Set();
@@ -79,7 +79,7 @@ namespace GZipTest
                             }
                             var decompressedBlock = DecompressByteBlock(block);
                             _finalByteBlocksPoolAddLocker.WaitOne();
-                            _finalByteBlocksPool.Add(decompressedBlock);
+                            _finalByteBlocksPool.Add(decompressedBlock.Index, decompressedBlock);
                             if(!_finalByteBlocksPool.IsFull)
                             {
                                 _finalByteBlocksPoolAddLocker.Set();
@@ -134,7 +134,7 @@ namespace GZipTest
             {
                 _readingThreadLocker.WaitOne();
                 var byteBlock = _inputManager.Read();
-                _initialByteBlocksPool.Add(byteBlock);
+                _initialByteBlocksPool.Add(byteBlock.Index, byteBlock);
                 if (!_initialByteBlocksPool.IsFull)
                 {
                     _readingThreadLocker.Set();

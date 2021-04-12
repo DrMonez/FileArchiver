@@ -6,9 +6,9 @@ namespace GZipTest.Implementations
 {
     internal class ByteBlocksPool : IByteBlocksPool
     {
-        private static readonly int _capacity = Environment.ProcessorCount * 30;
+        private static readonly int _capacity = Environment.ProcessorCount * DataConfiguration.CapacityCoefficient;
 
-        private Dictionary<long, IByteBlock> _byteBlocks = new Dictionary<long, IByteBlock>(_capacity);
+        private Dictionary<int, IByteBlock> _byteBlocks = new Dictionary<int, IByteBlock>(_capacity);
         private object _byteBlocksLocker = new object();
         private int _nextIndex = 0;
 
@@ -48,15 +48,20 @@ namespace GZipTest.Implementations
             return byteBlock;
         }
 
-        public void Add(IByteBlock byteBlock)
+        public void Add(int index, IByteBlock byteBlock)
         {
             if(Count >= _capacity)
             {
                 throw new OverflowException("The pool is overflow.");
             }
+            
             lock(_byteBlocksLocker)
             {
-                _byteBlocks.Add(byteBlock.Index, byteBlock);
+                if (_byteBlocks.ContainsKey(index))
+                {
+                    throw new IndexOutOfRangeException(index.ToString());
+                }
+                _byteBlocks.Add(index, byteBlock);
             }
             OnNoLongerEmpty?.Invoke();
         }
