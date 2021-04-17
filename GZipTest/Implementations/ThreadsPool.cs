@@ -10,6 +10,7 @@ namespace GZipTest.Implementations
         private static readonly int _maxThreadsCount = Environment.ProcessorCount;
         private Thread[] _threads = new Thread[_maxThreadsCount];
         private AutoResetEvent[] _autoHandlers;
+        private bool _isWorking = false;
 
         private FuncToParallel _FuncToParallel;
         private FunkToCheckCycleEnd _FunkToCheckCycleEnd;
@@ -17,6 +18,7 @@ namespace GZipTest.Implementations
         public delegate void FuncToParallel();
         public delegate bool FunkToCheckCycleEnd();
 
+        public bool IsWorking => _isWorking;
 
         public ThreadsPool(FunkToCheckCycleEnd funkToCheckCycleEnd, FuncToParallel funcToParallel)
         {
@@ -27,13 +29,15 @@ namespace GZipTest.Implementations
 
         public void Start()
         {
-            for(var i = 0; i < _threads.Length; i++)
+            _isWorking = true;
+            for (var i = 0; i < _threads.Length; i++)
             {
                 _threads[i] = new Thread(ThreadFunction);
                 _threads[i].Name = $"Thread {i}";
                 _threads[i].Start(i);
             }
             WaitHandle.WaitAll(_autoHandlers);
+            _isWorking = false;
         }
 
         private void ThreadFunction(object i)

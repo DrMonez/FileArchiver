@@ -9,17 +9,16 @@ namespace GZipTest
 {
     public class GZipFileArchiver : IFileArchiver
     {
+        private static readonly int _compressionRatio = 1000;
+
         private IThreadsPool _threadsPool;
         private IFileManager _inputManager;
         private IFileManager _outputManager;
-        private IByteBlocksPool _initialByteBlocksPool = new ByteBlocksPool();
-        private IByteBlocksPool _finalByteBlocksPool = new ByteBlocksPool();
-        private AutoResetEvent _finalByteBlocksPoolAddLocker = new AutoResetEvent(true);
+        private IByteBlocksPool _initialByteBlocksPool;
+        private IByteBlocksPool _finalByteBlocksPool;
 
         private Thread _readingThread;
-        private AutoResetEvent _readingThreadLocker = new AutoResetEvent(true);
         private Thread _writingThread;
-        private AutoResetEvent _writingThreadLocker = new AutoResetEvent(false);
         private AutoResetEvent _writingThreadEndingWaiter = new AutoResetEvent(true);
 
 
@@ -30,10 +29,12 @@ namespace GZipTest
             ConsoleHelper.WriteProcessMessage($"Compressing {fileToCompress.Name}...");
             using (_inputManager = new FileManager(fileToCompress, FileManagerMode.Read))
             {
+                _initialByteBlocksPool = new ByteBlocksPool();
+                _finalByteBlocksPool = new ByteBlocksPool(_initialByteBlocksPool.MaxSize * _compressionRatio);
+                _writingThreadEndingWaiter.WaitOne();
                 InitThreads();
                 using (_outputManager = new FileManager(compressedFile, FileManagerMode.WriteArchive))
                 {
-                    InitHandlers();
                     _threadsPool = new ThreadsPool(
                         () => _readingThread.IsAlive || !_initialByteBlocksPool.IsEmpty,
                         () =>
@@ -44,14 +45,10 @@ namespace GZipTest
                                 return;
                             }
                             var compressedBlock = CompressByteBlock(block);
-                            _finalByteBlocksPoolAddLocker.WaitOne();
                             _finalByteBlocksPool.Add(compressedBlock.Index, compressedBlock);
-                            if (!_finalByteBlocksPool.IsFull)
-                            {
-                                _finalByteBlocksPoolAddLocker.Set();
-                            }
                         }
                     );
+                    _writingThreadEndingWaiter.Set();
                     _threadsPool.Start();
                     _writingThreadEndingWaiter.WaitOne();
                 }
@@ -64,10 +61,12 @@ namespace GZipTest
             ConsoleHelper.WriteProcessMessage($"Decompressing {fileToDecompress.Name}...");
             using (_inputManager = new FileManager(fileToDecompress, FileManagerMode.ReadArchive))
             {
+                _finalByteBlocksPool = new ByteBlocksPool();
+                _initialByteBlocksPool = new ByteBlocksPool(_finalByteBlocksPool.MaxSize * _compressionRatio);
+                _writingThreadEndingWaiter.WaitOne();
                 InitThreads();
                 using (_outputManager = new FileManager(decompressedFile, FileManagerMode.Write))
                 {
-                    InitHandlers();
                     _threadsPool = new ThreadsPool(
                         () => _readingThread.IsAlive || !_initialByteBlocksPool.IsEmpty,
                         () =>
@@ -78,14 +77,10 @@ namespace GZipTest
                                 return;
                             }
                             var decompressedBlock = DecompressByteBlock(block);
-                            _finalByteBlocksPoolAddLocker.WaitOne();
                             _finalByteBlocksPool.Add(decompressedBlock.Index, decompressedBlock);
-                            if(!_finalByteBlocksPool.IsFull)
-                            {
-                                _finalByteBlocksPoolAddLocker.Set();
-                            }
                         }
                     );
+                    _writingThreadEndingWaiter.Set();
                     _threadsPool.Start();
                     _writingThreadEndingWaiter.WaitOne();
                 }
@@ -110,13 +105,6 @@ namespace GZipTest
             return resultByteBlock;
         }
 
-        private void InitHandlers()
-        {
-            _initialByteBlocksPool.OnFreedSpace += RunReading;
-            _finalByteBlocksPool.OnNoLongerEmpty += RunWriting;
-            _finalByteBlocksPool.OnFreedSpace += AllowAddByteBlockInFinalPool;
-        }
-
         private void InitThreads()
         {
             _readingThread = new Thread(Read);
@@ -132,27 +120,17 @@ namespace GZipTest
         {
             while(_inputManager.CanRead)
             {
-                _readingThreadLocker.WaitOne();
                 var byteBlock = _inputManager.Read();
                 _initialByteBlocksPool.Add(byteBlock.Index, byteBlock);
-                if (!_initialByteBlocksPool.IsFull)
-                {
-                    _readingThreadLocker.Set();
-                }
             }
         }
 
         private void Write()
         {
             _writingThreadEndingWaiter.WaitOne();
-            while (!_finalByteBlocksPool.IsEmpty || !_initialByteBlocksPool.IsEmpty || _readingThread.IsAlive)
+            while (_threadsPool.IsWorking || !_finalByteBlocksPool.IsEmpty || !_initialByteBlocksPool.IsEmpty || _readingThread.IsAlive)
             {
-                _writingThreadLocker.WaitOne();
                 var block = _finalByteBlocksPool.GetNext();
-                if(!_finalByteBlocksPool.IsEmpty)
-                {
-                    _writingThreadLocker.Set();
-                }
                 if (block == null)
                 {
                     continue;
@@ -160,21 +138,6 @@ namespace GZipTest
                 _outputManager.Write(block);
             }
             _writingThreadEndingWaiter.Set();
-        }
-
-        private void RunReading()
-        {
-            _readingThreadLocker.Set();
-        }
-
-        private void RunWriting()
-        {
-            _writingThreadLocker.Set();
-        }
-
-        private void AllowAddByteBlockInFinalPool()
-        {
-            _finalByteBlocksPoolAddLocker.Set();
         }
     }
 }
