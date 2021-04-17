@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace GZipTest.Intetfaces
+﻿namespace GZipTest.Intetfaces
 {
     internal interface IByteBlocksPool
     {

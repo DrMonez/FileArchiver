@@ -1,5 +1,4 @@
-﻿using GZipTest.Helpers;
-using GZipTest.Intetfaces;
+﻿using GZipTest.Intetfaces;
 using System;
 using System.IO;
 
