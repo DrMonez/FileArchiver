@@ -8,13 +8,6 @@ namespace GZipTest.Implementations
         public int BufferSize => Buffer.Length;
         public byte[] Buffer { get; set; }
 
-
-        public ByteBlock(int number)
-        {
-            Index = number;
-            Buffer = new byte[DataConfiguration.DefaultByteBlockSize];
-        }
-
         public ByteBlock(int number, long initialByteBlockSize)
         {
             Index = number;
